@@ -1,0 +1,306 @@
+---
+title: "Linear and Non-Linear Models - Project - Part 2"
+author: "Ami Parikh"
+date: "20 August 2018"
+output: html_document
+---
+
+##Explore possible types of dependence between one-minute counts and temperature.
+
+
+###2.2.1: Show that the dimension of the One-Minute Counts is equal to the dimension shown in the assignment before removing the NAs   
+
+Read the data and create a data frame with one-minute breaks counts and temperature measurements.
+
+Ceate data frame with necessary data.
+
+```{r}
+dataPath <- "C:/University of Chicago/Linear and Non-Linear Models/Lecture 7"
+Part2.Data<-read.csv(file=paste(dataPath,"OneMinuteCountsTemps.csv",sep="/"))
+head(Part2.Data)
+dim(Part2.Data)
+```
+
+###2.2.2: Show that the dimension of the One-Minute Counts is equal to the dimension shown in the assignment after removing the NAs  
+
+Removing rows with NAs
+
+```{r}
+Part2.Data.Original <- Part2.Data
+head(Part2.Data.Original)
+Part2.Data.Original <- as.data.frame(cbind(Part2.Data.Original,Part2.Data.Original[,2]/60))
+colnames(Part2.Data.Original)<-c("Times","Counts","Temperatures","Intensities")
+Part2.Data<-Part2.Data[complete.cases(Part2.Data),]
+dim(Part2.Data)
+
+```
+
+###2.2.3: Match the plot of temperature vs. intensities   
+
+Add column with intensities.
+
+```{r}
+Part2.Data<-as.data.frame(cbind(Part2.Data,Part2.Data[,2]/60))
+colnames(Part2.Data)<-c("Times","Counts","Temperatures","Intensities")
+head(Part2.Data)
+
+```
+
+
+Visualize the data.
+
+```{r}
+plot(Part2.Data$Temperatures,Part2.Data$Intensities)
+
+```
+
+###2.2.4: Interpret the plot and answer what type of relationship do you observe?  
+
+Temperature and Intensity appear to be dependent on each other, but it is a non-linear relationship.There seems to be more of a clustering of intensities in the the lower side of the temperatures. 
+
+
+###2.2.5: Plot and match the empirical copula and describe the type of dependency that is observed 
+Analyze empirical copula.  
+
+```{r}
+plot(rank(Part2.Data$Temperatures),rank(Part2.Data$Intensities))
+
+```
+
+**What type of dependency you see in the empirical copula?**
+There is some tail dependency as the upper right corner looks pinched. It looks like a Gumbel Copula
+
+
+
+###2.2.6: Estimate the parameters of a normal distribution for the temperatures using the fitdistr() function from the package MASS - match the parameters shown   
+
+What is the distribution of temperatures?
+Load package MASS to estimate distributions
+
+```{r}
+suppressWarnings(library(MASS))
+
+```
+
+
+Observe the Histogram
+
+```{r}
+hist(Part2.Data$Temperatures)
+
+```
+
+Estimate and test normal distribution using fitdistr() from MASS.
+
+```{r}
+FittingNormal <- fitdistr(Part2.Data$Temperatures,"normal")
+FittingNormal
+
+
+```
+
+###2.2.7: Use the KS Test to determine if the empirical distribution is equivalent to a theoretical normal distribution. Comment on the results 
+
+
+```{r}
+ksNormal <- ks.test(Part2.Data$Temperatures, "pnorm", mean=FittingNormal$estimate[1], sd=FittingNormal$estimate[2])
+ksNormal
+```
+
+The null is not rejected as the p value is quite high.So it seems like the distribution could be normal
+
+###2.2.8: Select a parametric copula that is appropriate for the observed type of dependence. Use the selected copula function to create a copula object and then estimate the parameters of this copula object.
+
+Select a parametric copula appropriate for the observed type of dependence.
+
+Fit the copula Copula.Fit and use it for simulation of rare events.
+
+```{r}
+suppressWarnings(library(copula))
+
+gumbelObject <- gumbelCopula(param=5, dim=2)
+
+dataforcopula <- cbind(Part2.Data$Intensities,Part2.Data$Temperatures)
+Gumbel.Copula.fit<-fitCopula(gumbelObject, 
+                              pobs(dataforcopula,ties.method = "average"), 
+                              method = "ml",
+                              optim.method = "L-BFGS-B", 
+                              optim.control = list(maxit=1000))
+
+Gumbel.Copula.fit
+
+
+```
+
+
+###2.2.9: Create a new copula object with the estimated parameters from 2.2.8 above. Simulate 250 observations based on this copula object and plot the perspective plot, contour plot, and simulated and empirical copula 
+
+Simulate data using Copula.Fit with one variable normally distributed, as temperature and the other with the distribution of your choice for the intensities.
+In order to make comparison possible use set.seed(8301735).
+First simulate 250 observations and make a 4-panel graph that we use to represent copula.
+Remember to create a copula object before running simulation.
+
+
+```{r}
+Gumbel.Copula <- gumbelCopula(param=Gumbel.Copula.fit@estimate,dim=2)
+set.seed(8301735)
+par(mfrow=c(2,2))
+
+Simulated.Gumbel.Copula<-rCopula(250,Gumbel.Copula)
+
+persp(Gumbel.Copula, dCopula, main="pdf",xlab="u", ylab="v", zlab="c(u,v)")
+contour(Gumbel.Copula,dCopula, main="pdf",xlab="u", ylab="v")
+
+SimulatedN<-length(Simulated.Gumbel.Copula[,1])
+
+mu= mean(Part2.Data.Original$Intensities)
+n=length(Part2.Data.Original$Intensities)
+mu
+s2 = var(Part2.Data.Original$Intensities)*(n-1)/n
+s2
+
+shape=mu^2/s2
+rate = mu/s2
+
+shape
+rate
+
+plot(Simulated.Gumbel.Copula,main="Simulated Copula",xlab="Variable 1",ylab="Variable 2")
+plot(rank(qgamma(Simulated.Gumbel.Copula[,1], shape=shape, rate=rate)),rank(qnorm(Simulated.Gumbel.Copula[,2],mean=mean(Part2.Data$Temperatures),sd=sd(Part2.Data$Temperatures))),
+     xlab="Temperature",ylab="Intensity")
+#title("Copula.fit,outer=TRUE,line=-2)
+```
+
+
+###2.2.10: Simulate 5000 observations based on the same copula object above (i.e. sample of U1 and U2 - two uniformly distributed random variables). Convert these samples into simulated temperatures and intensities using the normal quantile function for temperature and the quantile function of the distribution you chose in 5.3.11 for the intensities 
+
+
+```{r}
+par(mfrow=c(1,1))
+set.seed(8301735)
+Simulated.Gumbel.Copula.Bigger<-rCopula(5000,Gumbel.Copula)
+
+Simulated.Temperature <- qnorm(Simulated.Gumbel.Copula.Bigger[,2],mean=mean(Part2.Data$Temperatures),sd=sd(Part2.Data$Temperatures))
+Simulated.Intensities <- qgamma(Simulated.Gumbel.Copula.Bigger[,1],shape=shape, rate=rate)
+
+
+```
+
+
+###2.2.11: Plot the simulated variables (temperature vs. intensity) and match the plot shown 
+
+```{r}
+plot(Simulated.Temperature,Simulated.Intensities)
+
+```
+
+###2.2.12: Plot the empirical copula of the simulated variables (temperature vs. intensity) and match the plot shown 
+
+```{r}
+plot(rank(Simulated.Temperature),rank(Simulated.Intensities))
+
+```
+
+
+Now we can use the simulated data to analyze the tail dependency.
+Select the simulated pairs with intensity greater than 0.5 and temperature greater than 110.
+Use these data to fit negative binomial regression.
+
+###2.2.13: Use the initial sample of intensities and temperatures to fit a negative binomial regression for more regular ranges of intensity and temperature  
+
+First, fit the model to the sample, the name of the fitted model is NB.Fit.To.Sample.
+
+
+```{r}
+head(Part2.Data)
+NB.Fit.To.Sample <- glm.nb(Counts~Temperatures, data=Part2.Data)
+NB.Fit.To.Sample
+summary(NB.Fit.To.Sample)
+
+NB.Fit.To.Sample$coefficients
+
+NB.Fit.To.Sample$deviance
+
+NB.Fit.To.Sample$df.residual
+
+NB.Fit.To.Sample$aic
+
+NB.Fit.To.Sample$theta
+```
+
+
+###2.2.14: Plot the simulated tail events (don't need to match the graph precisely but should represent a very similar pattern)   
+
+**Create the simulated sample for tail events.**
+
+
+```{r}
+Simulated.Tails<-as.data.frame(
+  cbind(round(Simulated.Intensities[(Simulated.Temperature>110)&(Simulated.Intensities>.5)]*60),
+        Simulated.Temperature[(Simulated.Temperature>110)&(Simulated.Intensities>.5)]))
+colnames(Simulated.Tails)<-c("Counts","Temperatures")
+plot(Simulated.Tails$Temperatures,Simulated.Tails$Counts)
+
+```
+
+
+
+###2.2.15: Use the tail events of intensities and temperatures to fit a negative binomial regression for the tail observations   
+
+```{r}
+NB.Fit.To.Tail <- glm.nb(Counts~Temperatures, data=Simulated.Tails)
+summary(NB.Fit.To.Tail)
+
+NB.Fit.To.Tail$coefficients
+
+NB.Fit.To.Tail$deviance
+
+NB.Fit.To.Tail$df.residual
+
+NB.Fit.To.Tail$aic
+
+NB.Fit.To.Tail$theta
+
+```
+
+
+###2.2.16: Compare the summaries of the 2 models - comment on the fit of each model as described by deviance vs. degrees of freedom and AIC 
+
+AIC is much lower for the model fitted on the Simulated.Tails. (1557 for complete model vs. 556 for the Simulated.Tails). In both cases deviance and df are close enough, though it seems a little better fit for the Simulated.Tails model. 
+
+###2.2.17: What do the fitted parameter theta tell you about both models
+In the first model, theta is 4.2, which is quite small. It may or may not indicate over dispersion. But in the second model, theta is really very large. This means that there is no overdispersion. 
+
+
+###2.2.18: Is there an alternative model that you would try to fit to the simulated tail data?  
+
+We could try the Poisson model as it appears as if the simulated tail data does not have over dispersion.
+
+
+##2.2.19: What do both models tell you about the relationships between the temperature and the counts?
+Both models seem like good fits. However as there is no over-dispersion, it seems like the Poisson model is a better candidate to explain the relationship between temperature and counts.
+
+
+###2.2.20: Fit poisson model to Simulated.Tails$Counts and compare the fit with the negative binomial fit for Part2.Data.
+
+
+```{r}
+
+#Fitting Poisson model for simulated tail counts
+Poisson.Fit <- glm(Counts~Temperatures,data=Simulated.Tails,family=poisson)
+summary(Poisson.Fit)
+#link functions for poisson
+Poisson.Fit$deviance
+Poisson.Fit$df.residual
+Poisson.Fit$aic
+```
+
+**Is there overdispersion in the Poisson fit?**  
+There is no overdispersion in the Poisson fit. The Residual Deviance and the df are close enough.The coefficients are the same as those generated by the NB model
+
+###2.2.21: Compare the Poisson model above in 2.2.20 with the negative binomial model above in 2.2.15 
+
+Both the models give the same coefficients and a similar AIC, though the AIC for the Poisson is slightly smaller. However, theta value shown in the NB is very high indicating that there is no over dispersion. 
+
+
+
